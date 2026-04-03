@@ -637,3 +637,99 @@ docker compose up --build
 
 cd infrastructure/docker/dashboard-stack
 docker compose up --build
+
+
+# Adding a New Store Node (SymmetricDS)
+
+StockMesh uses SymmetricDS to sync data between the central server and store/tablet nodes.
+Adding a new node is automated using the onboarding script.
+
+Quick Start — Create a New Store Node
+
+node src/scripts/registerStoreNode.js   --storeCode=002   --nodeId=002   --mysqlPort=3310   --symmetricPort=31417
+
+Example output:
+
+Store node scaffold created successfully.
+
+Engine file:
+infrastructure/symmetricds/store-002/engines/store-002.properties
+
+Compose snippet:
+infrastructure/docker/api-stack/store-002.compose.snippet.yml
+
+What This Script Automatically Creates
+
+Creates store database:
+stockmesh_store_002
+
+Registers node in central SymmetricDS tables:
+sym_node
+sym_node_security
+
+Creates engine configuration file:
+infrastructure/symmetricds/store-002/engines/store-002.properties
+
+Creates logs directory:
+infrastructure/symmetricds/store-002/logs/
+
+Generates docker-compose service snippet
+
+Step 2 — Add Store Container to Docker Compose
+
+Open:
+infrastructure/docker/api-stack/docker-compose.yml
+
+Copy contents from:
+store-002.compose.snippet.yml
+
+Paste into the services section.
+
+Example:
+
+symmetricds-store-002:
+  image: jumpmind/symmetricds
+  ports:
+    - "31417:31415"
+  volumes:
+    - ../../symmetricds/store-002/engines:/opt/symmetric-ds/engines
+    - ../../symmetricds/store-002/logs:/opt/symmetric-ds/logs
+  depends_on:
+    - mysql-store-002
+
+mysql-store-002:
+  image: mysql:8.4
+  environment:
+    MYSQL_ROOT_PASSWORD: root
+    MYSQL_DATABASE: stockmesh_store_002
+  ports:
+    - "3310:3306"
+
+Step 3 — Restart Containers
+
+docker compose down
+docker compose up --build
+
+Step 4 — Verify Registration
+
+http://localhost:31415/sync/central-000
+
+Expected result:
+Registration successful
+
+Or check logs:
+
+docker logs api-stack-symmetricds-store-002-1
+
+Naming Convention
+
+Node ID: 002
+Engine Name: store-002
+Database: stockmesh_store_002
+MySQL Container: mysql-store-002
+Symmetric Container: symmetricds-store-002
+
+Future Roadmap
+
+Dashboard → Add Store → Click Save → Node auto-provisioned
+

@@ -6,29 +6,58 @@ services:
       - "3000:3000"
     depends_on:
       - rabbitmq
-      - symmetricds
-      - mysql
+      - mysql-central
 
   rabbitmq:
     image: rabbitmq:management
     ports:
       - "5672:5672"
       - "15672:15672"
+    volumes:
+      - rabbitmq-data:/var/lib/rabbitmq
 
-  mysql:
+  mysql-central:
     image: mysql:8.4
     environment:
       MYSQL_ROOT_PASSWORD: root
-      MYSQL_DATABASE: stockmesh
+      MYSQL_DATABASE: stockmesh_central
     ports:
       - "3307:3306"
+    volumes:
+      - mysql-central-data:/var/lib/mysql
 
-  symmetricds:
+  mysql-store-001:
+    image: mysql:8.4
+    environment:
+      MYSQL_ROOT_PASSWORD: root
+      MYSQL_DATABASE: stockmesh_store_001
+    ports:
+      - "3309:3306"
+    volumes:
+      - mysql-store-001-data:/var/lib/mysql
+
+  symmetricds-central:
     image: jumpmind/symmetricds
     ports:
       - "31415:31415"
     volumes:
-      - ../../symmetricds/engines:/opt/symmetric-ds/engines
-      - ../../symmetricds/logs:/opt/symmetric-ds/logs
+      - ../../symmetricds/central/engines:/opt/symmetric-ds/engines
+      - ../../symmetricds/central/logs:/opt/symmetric-ds/logs
     depends_on:
-      - mysql
+      - mysql-central
+
+  symmetricds-store-001:
+    image: jumpmind/symmetricds
+    ports:
+      - "31416:31415"
+    volumes:
+      - ../../symmetricds/store-001/engines:/opt/symmetric-ds/engines
+      - ../../symmetricds/store-001/logs:/opt/symmetric-ds/logs
+    depends_on:
+      - mysql-store-001
+      - symmetricds-central
+
+volumes:
+  rabbitmq-data:
+  mysql-central-data:
+  mysql-store-001-data:
