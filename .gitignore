@@ -1,0 +1,47 @@
+# Node
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# React Native
+android/.gradle/
+android/app/build/
+android/build/
+ios/Pods/
+ios/build/
+*.keystore
+
+# React / Vite
+dist/
+build/
+.vite/
+
+# Environment files
+.env
+.env.*
+
+# Logs
+logs/
+*.log
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+
+# Mac temp
+*.swp
+
+# Docker temp
+docker-data/
+
+# .NET
+bin/
+obj/
+
+# Misc
+coverage/
