@@ -45,3 +45,12 @@ obj/
 
 # Misc
 coverage/
+
+
+android/.gradle/
+android/app/build/
+android/build/
+ios/Pods/
+ios/build/
+.bundle/
+vendor/
