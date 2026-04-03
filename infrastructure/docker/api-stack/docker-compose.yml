@@ -1,0 +1,20 @@
+services:
+  api:
+    build:
+      context: ../../../apps/api
+    ports:
+      - "3000:3000"
+    depends_on:
+      - rabbitmq
+      - symmetricds
+
+  rabbitmq:
+    image: rabbitmq:management
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+
+  symmetricds:
+    image: jumpmind/symmetricds
+    ports:
+      - "31415:31415"

@@ -1,0 +1,22 @@
+services:
+  dashboard-web:
+    build:
+      context: ../../../apps/dashboard-web
+    ports:
+      - "5173:5173"
+    depends_on:
+      - dashboard-mysql
+
+  dashboard-mysql:
+    image: mysql:8.4
+    environment:
+      MYSQL_ROOT_PASSWORD: root
+      MYSQL_DATABASE: stockmesh_dashboard
+    ports:
+      - "3308:3306"
+
+  realtime-hub:
+    build:
+      context: ../../../apps/realtime-hub
+    ports:
+      - "5001:5000"
