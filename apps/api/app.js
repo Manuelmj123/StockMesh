@@ -2,6 +2,7 @@ const express = require("express");
 const cors = require("cors");
 
 const symmetricRoutes = require("./src/routes/symmetric.routes");
+const inventoryRoutes = require("./src/routes/inventoryRoutes");
 
 const app = express();
 
@@ -24,5 +25,6 @@ app.get("/health", (_req, res) => {
 });
 
 app.use("/api/symmetric", symmetricRoutes);
+app.use("/api/inventory", inventoryRoutes);
 
 module.exports = app;

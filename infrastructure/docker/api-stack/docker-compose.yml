@@ -16,6 +16,11 @@ services:
       REALTIME_HUB_BASE_URL: http://realtime-hub:5000
       REALTIME_HUB_INTERNAL_API_KEY: stockmesh-dev-key
       SYMMETRIC_NODE_CONTAINERS: '{"000":"api-stack-symmetricds-central-1","001":"api-stack-symmetricds-store-001-1"}'
+      STORE_DB_HOST: mysql-store-001
+      STORE_DB_PORT: 3306
+      STORE_DB_USER: root
+      STORE_DB_PASSWORD: root
+      STORE_DB_NAME: stockmesh_store_001
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
     depends_on:
@@ -24,6 +29,8 @@ services:
       rabbitmq:
         condition: service_started
       mysql-central:
+        condition: service_started
+      mysql-store-001:
         condition: service_started
       symmetricds-central:
         condition: service_started
