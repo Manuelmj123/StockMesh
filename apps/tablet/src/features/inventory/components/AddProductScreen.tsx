@@ -1,5 +1,7 @@
 import React, { useMemo, useRef, useState } from 'react';
 import {
+  ActivityIndicator,
+  Alert,
   Animated,
   KeyboardAvoidingView,
   Platform,
@@ -9,9 +11,9 @@ import {
   Text,
   TextInput,
   View,
-  Alert,
 } from 'react-native';
 import { ProductFormValues, StoreLocation } from '../../../types/inventory';
+import { createInventoryItem } from '../services/inventoryService';
 
 type AddProductScreenProps = {
   location: StoreLocation;
@@ -105,6 +107,7 @@ type StyledInputProps = {
   autoCapitalize?: 'none' | 'sentences' | 'words' | 'characters';
   multiline?: boolean;
   prefix?: string;
+  editable?: boolean;
 };
 
 function StyledInput({
@@ -115,6 +118,7 @@ function StyledInput({
   autoCapitalize,
   multiline,
   prefix,
+  editable = true,
 }: StyledInputProps) {
   const [focused, setFocused] = useState(false);
   const anim = useRef(new Animated.Value(0)).current;
@@ -153,6 +157,7 @@ function StyledInput({
         inputStyles.shell,
         { borderColor, backgroundColor: bgColor },
         multiline && inputStyles.multilineShell,
+        !editable && inputStyles.readOnlyShell,
       ]}>
       {prefix && <Text style={inputStyles.prefix}>{prefix}</Text>}
 
@@ -166,14 +171,16 @@ function StyledInput({
         keyboardType={keyboardType}
         autoCapitalize={autoCapitalize}
         multiline={multiline}
+        editable={editable}
         style={[
           inputStyles.input,
           prefix && inputStyles.inputWithPrefix,
           multiline && inputStyles.multilineInput,
+          !editable && inputStyles.readOnlyInput,
         ]}
       />
 
-      {focused && <View style={inputStyles.focusAccent} />}
+      {focused && editable && <View style={inputStyles.focusAccent} />}
     </Animated.View>
   );
 }
@@ -190,6 +197,9 @@ const inputStyles = StyleSheet.create({
   multilineShell: {
     alignItems: 'flex-start',
     minHeight: 100,
+  },
+  readOnlyShell: {
+    opacity: 0.92,
   },
   prefix: {
     paddingLeft: 14,
@@ -214,6 +224,9 @@ const inputStyles = StyleSheet.create({
   multilineInput: {
     textAlignVertical: 'top',
     paddingTop: 14,
+  },
+  readOnlyInput: {
+    color: '#CBD5E1',
   },
   focusAccent: {
     position: 'absolute',
@@ -336,59 +349,71 @@ export default function AddProductScreen({
   onCancel,
   onSave,
 }: AddProductScreenProps) {
-  const [productName, setProductName] = useState('');
+  const [itemName, setItemName] = useState('');
   const [sku, setSku] = useState('');
-  const [category, setCategory] = useState('');
-  const [vendor, setVendor] = useState('');
-  const [quantity, setQuantity] = useState('');
-  const [reorderLevel, setReorderLevel] = useState('');
-  const [cost, setCost] = useState('');
-  const [price, setPrice] = useState('');
-  const [aisle, setAisle] = useState('');
-  const [notes, setNotes] = useState('');
+  const [quantityOnHand, setQuantityOnHand] = useState('');
+  const [unitPrice, setUnitPrice] = useState('');
+  const [isSaving, setIsSaving] = useState(false);
 
-  const quantityValue = useMemo(() => toInteger(quantity), [quantity]);
-  const reorderLevelValue = useMemo(() => toInteger(reorderLevel), [reorderLevel]);
-  const costValue = useMemo(() => toNumber(cost), [cost]);
-  const priceValue = useMemo(() => toNumber(price), [price]);
+  const quantityValue = useMemo(
+    () => toInteger(quantityOnHand),
+    [quantityOnHand],
+  );
+
+  const unitPriceValue = useMemo(
+    () => toNumber(unitPrice),
+    [unitPrice],
+  );
+
   const inventoryValue = useMemo(
-    () => quantityValue * priceValue,
-    [quantityValue, priceValue],
+    () => quantityValue * unitPriceValue,
+    [quantityValue, unitPriceValue],
   );
-  const marginValue = useMemo(
-    () => priceValue - costValue,
-    [priceValue, costValue],
-  );
-  const marginPct = useMemo(
-    () => (priceValue > 0 ? (marginValue / priceValue) * 100 : 0),
-    [marginValue, priceValue],
-  );
+
+  const estimatedSyncDelay = '5–60 sec';
+  const completionCount = [itemName, sku, quantityOnHand, unitPrice].filter(
+    value => value.trim().length > 0,
+  ).length;
 
   const canSave =
-    productName.trim().length > 0 &&
+    itemName.trim().length > 0 &&
     sku.trim().length > 0 &&
-    category.trim().length > 0 &&
     quantityValue > 0 &&
-    priceValue > 0;
+    unitPriceValue > 0 &&
+    !isSaving;
 
-  const handleSave = () => {
+  const handleSave = async () => {
     if (!canSave) {
       Alert.alert('Missing fields', 'Complete all required fields before saving.');
       return;
     }
 
-    onSave({
-      name: productName.trim(),
+    const payload: ProductFormValues = {
       sku: sku.trim(),
-      category: category.trim(),
-      vendor: vendor.trim() || 'Internal Vendor',
-      quantity: quantityValue,
-      reorderLevel: reorderLevelValue,
-      cost: costValue,
-      price: priceValue,
-      aisle: aisle.trim() || 'Main Floor',
-      notes: notes.trim(),
-    });
+      itemName: itemName.trim(),
+      quantityOnHand: quantityValue,
+      unitPrice: unitPriceValue,
+    };
+
+    try {
+      setIsSaving(true);
+
+      await createInventoryItem(payload);
+      onSave(payload);
+
+      Alert.alert(
+        'Product saved',
+        'The item was added to the store inventory and will replicate to the central database automatically.',
+      );
+    } catch (error) {
+      const message =
+        error instanceof Error && error.message
+          ? error.message
+          : 'Failed to save the product.';
+      Alert.alert('Save failed', message);
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   return (
@@ -425,17 +450,8 @@ export default function AddProductScreen({
             </View>
 
             <View style={styles.sideStatRow}>
-              <Text style={styles.sideStatKey}>Unit Margin</Text>
-              <Text style={[styles.sideStatVal, marginValue > 0 && styles.positive]}>
-                ${formatCurrency(marginValue)}
-              </Text>
-            </View>
-
-            <View style={styles.sideStatRow}>
-              <Text style={styles.sideStatKey}>Margin %</Text>
-              <Text style={[styles.sideStatVal, marginPct > 0 && styles.positive]}>
-                {marginPct.toFixed(1)}%
-              </Text>
+              <Text style={styles.sideStatKey}>Unit Price</Text>
+              <Text style={styles.sideStatVal}>${formatCurrency(unitPriceValue)}</Text>
             </View>
 
             <View style={styles.sideStatRow}>
@@ -444,8 +460,13 @@ export default function AddProductScreen({
             </View>
 
             <View style={styles.sideStatRow}>
-              <Text style={styles.sideStatKey}>Reorder At</Text>
-              <Text style={styles.sideStatVal}>{reorderLevelValue}</Text>
+              <Text style={styles.sideStatKey}>Sync Target</Text>
+              <Text style={[styles.sideStatVal, styles.positive]}>Central DB</Text>
+            </View>
+
+            <View style={styles.sideStatRow}>
+              <Text style={styles.sideStatKey}>Expected Sync</Text>
+              <Text style={styles.sideStatVal}>{estimatedSyncDelay}</Text>
             </View>
           </View>
 
@@ -457,25 +478,13 @@ export default function AddProductScreen({
                   style={[
                     styles.progressFill,
                     {
-                      width: `${Math.min(
-                        100,
-                        ([productName, sku, category, quantity, price].filter(
-                          v => v.trim().length > 0,
-                        ).length /
-                          5) *
-                          100,
-                      )}%`,
+                      width: `${Math.min(100, (completionCount / 4) * 100)}%`,
                     },
                   ]}
                 />
               </View>
               <Text style={styles.progressSub}>
-                {
-                  [productName, sku, category, quantity, price].filter(
-                    v => v.trim().length > 0,
-                  ).length
-                }
-                /5 required fields
+                {completionCount}/4 required fields
               </Text>
             </View>
           </View>
@@ -489,10 +498,10 @@ export default function AddProductScreen({
             <View style={styles.section}>
               <SectionHeader number="01" title="Product Identity" />
               <View style={styles.twoCol}>
-                <Field label="Product Name" required half>
+                <Field label="Item Name" required half>
                   <StyledInput
-                    value={productName}
-                    onChangeText={setProductName}
+                    value={itemName}
+                    onChangeText={setItemName}
                     placeholder="Liquid Detergent"
                   />
                 </Field>
@@ -505,60 +514,25 @@ export default function AddProductScreen({
                     autoCapitalize="characters"
                   />
                 </Field>
-
-                <Field label="Category" required half>
-                  <StyledInput
-                    value={category}
-                    onChangeText={setCategory}
-                    placeholder="Detergents"
-                  />
-                </Field>
-
-                <Field label="Vendor" half>
-                  <StyledInput
-                    value={vendor}
-                    onChangeText={setVendor}
-                    placeholder="Clean Supply Co."
-                  />
-                </Field>
               </View>
             </View>
 
             <View style={styles.section}>
               <SectionHeader number="02" title="Stock & Pricing" />
               <View style={styles.twoCol}>
-                <Field label="Quantity" required half>
+                <Field label="Quantity On Hand" required half>
                   <StyledInput
-                    value={quantity}
-                    onChangeText={t => setQuantity(sanitizeWholeNumber(t))}
+                    value={quantityOnHand}
+                    onChangeText={text => setQuantityOnHand(sanitizeWholeNumber(text))}
                     placeholder="24"
                     keyboardType="number-pad"
                   />
                 </Field>
 
-                <Field label="Reorder Level" half>
+                <Field label="Unit Price" required half>
                   <StyledInput
-                    value={reorderLevel}
-                    onChangeText={t => setReorderLevel(sanitizeWholeNumber(t))}
-                    placeholder="8"
-                    keyboardType="number-pad"
-                  />
-                </Field>
-
-                <Field label="Unit Cost" half>
-                  <StyledInput
-                    value={cost}
-                    onChangeText={t => setCost(sanitizeCurrency(t))}
-                    placeholder="4.50"
-                    keyboardType="decimal-pad"
-                    prefix="$"
-                  />
-                </Field>
-
-                <Field label="Retail Price" required half>
-                  <StyledInput
-                    value={price}
-                    onChangeText={t => setPrice(sanitizeCurrency(t))}
+                    value={unitPrice}
+                    onChangeText={text => setUnitPrice(sanitizeCurrency(text))}
                     placeholder="8.99"
                     keyboardType="decimal-pad"
                     prefix="$"
@@ -568,20 +542,31 @@ export default function AddProductScreen({
             </View>
 
             <View style={styles.section}>
-              <SectionHeader number="03" title="Location & Notes" />
-              <Field label="Storage Area">
-                <StyledInput
-                  value={aisle}
-                  onChangeText={setAisle}
-                  placeholder="Aisle A — Shelf 2"
-                />
-              </Field>
+              <SectionHeader number="03" title="Replication Preview" />
 
-              <Field label="Notes">
+              <View style={styles.twoCol}>
+                <Field label="Store Location" half>
+                  <StyledInput
+                    value={location.name}
+                    onChangeText={() => {}}
+                    editable={false}
+                  />
+                </Field>
+
+                <Field label="Sync Destination" half>
+                  <StyledInput
+                    value="Central Inventory Database"
+                    onChangeText={() => {}}
+                    editable={false}
+                  />
+                </Field>
+              </View>
+
+              <Field label="What happens next">
                 <StyledInput
-                  value={notes}
-                  onChangeText={setNotes}
-                  placeholder="Optional product notes…"
+                  value="This save posts to the store inventory API first. Once the row is written to the store database, SymmetricDS picks it up and replicates it to the central node automatically."
+                  onChangeText={() => {}}
+                  editable={false}
                   multiline
                 />
               </Field>
@@ -597,9 +582,9 @@ export default function AddProductScreen({
                   accent
                 />
                 <StatTile
-                  label="Unit Margin"
-                  value={`$${formatCurrency(marginValue)}`}
-                  positive={marginValue > 0}
+                  label="Unit Price"
+                  value={`$${formatCurrency(unitPriceValue)}`}
+                  positive={unitPriceValue > 0}
                 />
               </View>
 
@@ -610,8 +595,8 @@ export default function AddProductScreen({
                   neutral
                 />
                 <StatTile
-                  label="Reorder Level"
-                  value={`${reorderLevelValue}`}
+                  label="Sync Path"
+                  value="Store → Central"
                   neutral
                 />
               </View>
@@ -619,22 +604,39 @@ export default function AddProductScreen({
           </ScrollView>
 
           <View style={styles.footer}>
-            <Pressable style={styles.cancelBtn} onPress={onCancel}>
+            <Pressable
+              style={[styles.cancelBtn, isSaving && styles.disabledBtn]}
+              onPress={onCancel}
+              disabled={isSaving}>
               <Text style={styles.cancelBtnText}>Cancel</Text>
             </Pressable>
 
             <View style={styles.footerRight}>
               <Text style={styles.footerHint}>
-                {canSave ? '✓ Ready to save' : 'Fill required fields to save'}
+                {isSaving
+                  ? 'Posting product to store inventory...'
+                  : canSave
+                    ? '✓ Ready to save'
+                    : 'Fill required fields to save'}
               </Text>
 
               <Pressable
                 style={[styles.saveBtn, !canSave && styles.saveBtnDisabled]}
-                onPress={handleSave}>
-                <Text style={styles.saveBtnText}>Save Product</Text>
-                <View style={styles.saveBtnArrow}>
-                  <Text style={styles.saveBtnArrowText}>→</Text>
-                </View>
+                onPress={handleSave}
+                disabled={!canSave}>
+                {isSaving ? (
+                  <View style={styles.saveBtnLoading}>
+                    <ActivityIndicator size="small" color="#080D17" />
+                    <Text style={styles.saveBtnText}>Saving...</Text>
+                  </View>
+                ) : (
+                  <>
+                    <Text style={styles.saveBtnText}>Save Product</Text>
+                    <View style={styles.saveBtnArrow}>
+                      <Text style={styles.saveBtnArrowText}>→</Text>
+                    </View>
+                  </>
+                )}
               </Pressable>
             </View>
           </View>
@@ -878,6 +880,9 @@ const styles = StyleSheet.create({
     color: '#CBD5E1',
     letterSpacing: 0.3,
   },
+  disabledBtn: {
+    opacity: 0.65,
+  },
   footerRight: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -895,6 +900,8 @@ const styles = StyleSheet.create({
     backgroundColor: '#F59E0B',
     borderRadius: 12,
     overflow: 'hidden',
+    minWidth: 176,
+    justifyContent: 'center',
   },
   saveBtnDisabled: {
     backgroundColor: '#292524',
@@ -918,5 +925,12 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '900',
     color: '#080D17',
+  },
+  saveBtnLoading: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    paddingHorizontal: 22,
+    paddingVertical: 15,
   },
 });

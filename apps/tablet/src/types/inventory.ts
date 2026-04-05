@@ -1,39 +1,21 @@
-export type InventoryStatus = 'In Stock' | 'Low Stock' | 'Out of Stock';
-
-export interface StoreLocation {
+export type StoreLocation = {
+  id: string;
   name: string;
   address: string;
-}
+};
 
-export interface ProductItem {
-  id: string;
+export type ProductFormValues = {
   sku: string;
-  name: string;
-  category: string;
-  vendor: string;
-  quantity: number;
-  reorderLevel: number;
-  cost: number;
-  price: number;
-  aisle: string;
-  notes: string;
-  updatedAt: string;
-}
+  itemName: string;
+  quantityOnHand: number;
+  unitPrice: number;
+};
 
-export interface ProductFormValues {
-  name: string;
+export type InventoryCardItem = {
+  inventory_id: number;
   sku: string;
-  category: string;
-  vendor: string;
-  quantity: number;
-  reorderLevel: number;
-  cost: number;
-  price: number;
-  aisle: string;
-  notes: string;
-}
-
-export interface InventoryHookResult {
-  products: ProductItem[];
-  addProduct: (values: ProductFormValues) => void;
-}
+  item_name: string;
+  quantity_on_hand: number;
+  unit_price: string;
+  updated_at: string;
+};
