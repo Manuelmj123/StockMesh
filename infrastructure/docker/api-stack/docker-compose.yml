@@ -4,9 +4,31 @@ services:
       context: ../../../apps/api
     ports:
       - "3000:3000"
+    environment:
+      PORT: 3000
+      CORS_ORIGIN: http://localhost:5173
+      SYMMETRIC_DB_HOST: mysql-central
+      SYMMETRIC_DB_PORT: 3306
+      SYMMETRIC_DB_USER: root
+      SYMMETRIC_DB_PASSWORD: root
+      SYMMETRIC_DB_NAME: stockmesh_central
+      SYMMETRIC_POLL_INTERVAL_MS: 5000
+      REALTIME_HUB_BASE_URL: http://realtime-hub:5000
+      REALTIME_HUB_INTERNAL_API_KEY: stockmesh-dev-key
+      SYMMETRIC_NODE_CONTAINERS: '{"000":"api-stack-symmetricds-central-1","001":"api-stack-symmetricds-store-001-1"}'
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
     depends_on:
-      - rabbitmq
-      - mysql-central
+      realtime-hub:
+        condition: service_started
+      rabbitmq:
+        condition: service_started
+      mysql-central:
+        condition: service_started
+      symmetricds-central:
+        condition: service_started
+      symmetricds-store-001:
+        condition: service_started
 
   rabbitmq:
     image: rabbitmq:management
@@ -25,6 +47,7 @@ services:
       - "3307:3306"
     volumes:
       - mysql-central-data:/var/lib/mysql
+      - ../../mysql-init/central:/docker-entrypoint-initdb.d
 
   mysql-store-001:
     image: mysql:8.4
@@ -35,6 +58,33 @@ services:
       - "3309:3306"
     volumes:
       - mysql-store-001-data:/var/lib/mysql
+      - ../../mysql-init/store-001:/docker-entrypoint-initdb.d
+
+  symmetric-prepare:
+    image: jumpmind/symmetricds
+    depends_on:
+      mysql-central:
+        condition: service_started
+      mysql-store-001:
+        condition: service_started
+    volumes:
+      - ../../symmetricds/central/engines/central-000.properties:/opt/symmetric-ds/engines/central-000.properties:ro
+      - ../../symmetricds/store-001/engines/store-001.properties:/opt/symmetric-ds/engines/store-001.properties:ro
+      - ../../bootstrap/prepare-symmetric.sh:/bootstrap/prepare-symmetric.sh:ro
+    entrypoint: ["/bin/sh", "/bootstrap/prepare-symmetric.sh"]
+    restart: "no"
+
+  symmetric-bootstrap:
+    image: mysql:8.4
+    depends_on:
+      mysql-central:
+        condition: service_started
+      symmetric-prepare:
+        condition: service_completed_successfully
+    volumes:
+      - ../../bootstrap:/bootstrap
+    entrypoint: ["/bin/sh", "/bootstrap/bootstrap-symmetric.sh"]
+    restart: "no"
 
   symmetricds-central:
     image: jumpmind/symmetricds
@@ -44,7 +94,12 @@ services:
       - ../../symmetricds/central/engines:/opt/symmetric-ds/engines
       - ../../symmetricds/central/logs:/opt/symmetric-ds/logs
     depends_on:
-      - mysql-central
+      mysql-central:
+        condition: service_started
+      symmetric-prepare:
+        condition: service_completed_successfully
+      symmetric-bootstrap:
+        condition: service_completed_successfully
 
   symmetricds-store-001:
     image: jumpmind/symmetricds
@@ -54,8 +109,25 @@ services:
       - ../../symmetricds/store-001/engines:/opt/symmetric-ds/engines
       - ../../symmetricds/store-001/logs:/opt/symmetric-ds/logs
     depends_on:
-      - mysql-store-001
-      - symmetricds-central
+      mysql-store-001:
+        condition: service_started
+      symmetric-prepare:
+        condition: service_completed_successfully
+      symmetric-bootstrap:
+        condition: service_completed_successfully
+      symmetricds-central:
+        condition: service_started
+
+  realtime-hub:
+    build:
+      context: ../../../apps/realtime-hub
+    ports:
+      - "5001:5000"
+    environment:
+      ASPNETCORE_URLS: http://0.0.0.0:5000
+      ASPNETCORE_ENVIRONMENT: Development
+      MonitorSettings__InternalApiKey: stockmesh-dev-key
+      Cors__Origins__0: http://localhost:5173
 
 volumes:
   rabbitmq-data:

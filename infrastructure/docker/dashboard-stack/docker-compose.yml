@@ -4,6 +4,9 @@ services:
       context: ../../../apps/dashboard-web
     ports:
       - "5173:5173"
+    environment:
+      VITE_API_BASE_URL: http://localhost:3000
+      VITE_SIGNALR_BASE_URL: http://localhost:5001
     depends_on:
       - dashboard-mysql
 
@@ -14,9 +17,3 @@ services:
       MYSQL_DATABASE: stockmesh_dashboard
     ports:
       - "3308:3306"
-
-  realtime-hub:
-    build:
-      context: ../../../apps/realtime-hub
-    ports:
-      - "5001:5000"
