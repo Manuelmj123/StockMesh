@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import * as signalR from "@microsoft/signalr";
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || "http://localhost:3000";
@@ -170,12 +170,22 @@ const STATUS_TONE = {
   offline: "danger"
 };
 
+function isStoppedDuringNegotiationError(error) {
+  const message = String(error?.message || "");
+  return (
+    error?.name === "AbortError" ||
+    message.includes("stopped during negotiation") ||
+    message.includes("The connection was stopped during negotiation")
+  );
+}
+
 export default function NodesPage() {
   const [nodes, setNodes] = useState([]);
   const [activity, setActivity] = useState([]);
   const [refreshing, setRefreshing] = useState(false);
   const [restartingNodeIds, setRestartingNodeIds] = useState({});
   const [hubState, setHubState] = useState("Connecting");
+  const isMountedRef = useRef(false);
 
   const loadNodes = useCallback(async () => {
     const response = await fetch(`${API_BASE_URL}/api/symmetric/nodes`);
@@ -184,7 +194,9 @@ export default function NodesPage() {
     }
 
     const payload = await response.json();
-    setNodes(Array.isArray(payload) ? payload : []);
+    if (isMountedRef.current) {
+      setNodes(Array.isArray(payload) ? payload : []);
+    }
   }, []);
 
   const loadActivity = useCallback(async () => {
@@ -194,7 +206,9 @@ export default function NodesPage() {
     }
 
     const payload = await response.json();
-    setActivity(Array.isArray(payload) ? payload : []);
+    if (isMountedRef.current) {
+      setActivity(Array.isArray(payload) ? payload : []);
+    }
   }, []);
 
   const refreshAll = useCallback(async () => {
@@ -210,12 +224,18 @@ export default function NodesPage() {
       }
 
       const payload = await response.json();
-      setNodes(Array.isArray(payload.nodes) ? payload.nodes : []);
+
+      if (isMountedRef.current) {
+        setNodes(Array.isArray(payload.nodes) ? payload.nodes : []);
+      }
+
       await loadActivity();
     } catch (error) {
       console.error("Failed to refresh nodes", error);
     } finally {
-      setRefreshing(false);
+      if (isMountedRef.current) {
+        setRefreshing(false);
+      }
     }
   }, [loadActivity]);
 
@@ -248,50 +268,66 @@ export default function NodesPage() {
         }
 
         const payload = await response.json();
-        setNodes(Array.isArray(payload.nodes) ? payload.nodes : []);
+
+        if (isMountedRef.current) {
+          setNodes(Array.isArray(payload.nodes) ? payload.nodes : []);
+        }
+
         await loadActivity();
       } catch (error) {
         console.error("Failed to restart node", error);
 
-        setNodes((current) =>
-          current.map((node) =>
-            node.nodeId === nodeId
-              ? {
-                  ...node,
-                  notes: "Restart failed. Check API and container logs."
-                }
-              : node
-          )
-        );
+        if (isMountedRef.current) {
+          setNodes((current) =>
+            current.map((node) =>
+              node.nodeId === nodeId
+                ? {
+                    ...node,
+                    notes: "Restart failed. Check API and container logs."
+                  }
+                : node
+            )
+          );
+        }
       } finally {
-        setRestartingNodeIds((current) => ({
-          ...current,
-          [nodeId]: false
-        }));
+        if (isMountedRef.current) {
+          setRestartingNodeIds((current) => ({
+            ...current,
+            [nodeId]: false
+          }));
+        }
       }
     },
     [loadActivity]
   );
 
   useEffect(() => {
+    isMountedRef.current = true;
+
     loadNodes().catch((error) => console.error("Failed to load nodes", error));
     loadActivity().catch((error) => console.error("Failed to load activity", error));
+
+    return () => {
+      isMountedRef.current = false;
+    };
   }, [loadNodes, loadActivity]);
 
   useEffect(() => {
+    let disposed = false;
+
     const connection = new signalR.HubConnectionBuilder()
       .withUrl(`${SIGNALR_BASE_URL}/hubs/symmetric-monitor`)
       .withAutomaticReconnect()
       .build();
 
     connection.on("InitialNodeSnapshot", (snapshot) => {
-      if (Array.isArray(snapshot)) {
+      if (!disposed && Array.isArray(snapshot)) {
         setNodes(snapshot);
       }
     });
 
     connection.on("NodeMetricsUpdated", (updatedNode) => {
-      if (!updatedNode?.nodeId) {
+      if (disposed || !updatedNode?.nodeId) {
         return;
       }
 
@@ -313,7 +349,7 @@ export default function NodesPage() {
     });
 
     connection.on("ReplicationActivityCreated", (item) => {
-      if (!item?.id) {
+      if (disposed || !item?.id) {
         return;
       }
 
@@ -324,37 +360,64 @@ export default function NodesPage() {
     });
 
     connection.onreconnecting(() => {
-      setHubState("Reconnecting");
+      if (!disposed) {
+        setHubState("Reconnecting");
+      }
     });
 
     connection.onreconnected(() => {
-      setHubState("Connected");
+      if (!disposed) {
+        setHubState("Connected");
+      }
     });
 
     connection.onclose(() => {
-      setHubState("Disconnected");
+      if (!disposed) {
+        setHubState("Disconnected");
+      }
     });
 
     connection
       .start()
       .then(() => {
-        setHubState("Connected");
+        if (!disposed) {
+          setHubState("Connected");
+        }
       })
       .catch((error) => {
+        if (disposed || isStoppedDuringNegotiationError(error)) {
+          return;
+        }
+
         console.error("Realtime connection failed", error);
-        setHubState("Disconnected");
+        if (!disposed) {
+          setHubState("Disconnected");
+        }
       });
 
     const fallbackInterval = setInterval(() => {
-      loadNodes().catch((error) => console.error("Fallback node refresh failed", error));
-      loadActivity().catch((error) => console.error("Fallback activity refresh failed", error));
+      if (disposed) {
+        return;
+      }
+
+      loadNodes().catch((error) => {
+        if (!disposed) {
+          console.error("Fallback node refresh failed", error);
+        }
+      });
+
+      loadActivity().catch((error) => {
+        if (!disposed) {
+          console.error("Fallback activity refresh failed", error);
+        }
+      });
     }, 10000);
 
     return () => {
+      disposed = true;
       clearInterval(fallbackInterval);
-      connection.stop().catch((error) => {
-        console.error("Failed to stop realtime connection", error);
-      });
+
+      connection.stop().catch(() => {});
     };
   }, [loadNodes, loadActivity]);
 

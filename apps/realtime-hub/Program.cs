@@ -7,6 +7,7 @@ var builder = WebApplication.CreateBuilder(args);
 
 builder.Services.AddSignalR();
 builder.Services.AddSingleton<MonitorState>();
+builder.Services.AddSingleton<InventoryState>();
 builder.Services.AddSingleton<DashboardInventoryWriter>();
 builder.Services.AddHostedService<InventoryRabbitConsumer>();
 
@@ -30,6 +31,25 @@ var app = builder.Build();
 
 app.UseCors("DashboardCors");
 
+using (var scope = app.Services.CreateScope())
+{
+    var services = scope.ServiceProvider;
+    var dashboardInventoryWriter = services.GetRequiredService<DashboardInventoryWriter>();
+    var inventoryState = services.GetRequiredService<InventoryState>();
+    var logger = services.GetRequiredService<ILoggerFactory>().CreateLogger("RealtimeHubStartup");
+
+    try
+    {
+        var items = await dashboardInventoryWriter.GetAllInventoryAsync();
+        inventoryState.SetItems(items);
+        logger.LogInformation("Loaded {Count} inventory records into realtime hub startup cache.", items.Count);
+    }
+    catch (Exception exception)
+    {
+        logger.LogWarning(exception, "Failed to preload inventory snapshot at startup. Continuing with empty cache.");
+    }
+}
+
 app.MapGet("/", () => Results.Ok(new
 {
     ok = true,
@@ -45,6 +65,27 @@ app.MapGet("/api/monitor/activity", (int? take, MonitorState state) =>
 {
     var size = Math.Clamp(take ?? 20, 1, 100);
     return Results.Ok(state.GetActivity(size));
+});
+
+app.MapGet("/api/inventory-report", async (
+    DashboardInventoryWriter dashboardInventoryWriter,
+    InventoryState inventoryState,
+    ILoggerFactory loggerFactory,
+    CancellationToken cancellationToken) =>
+{
+    var logger = loggerFactory.CreateLogger("InventoryReportEndpoint");
+
+    try
+    {
+        var items = await dashboardInventoryWriter.GetAllInventoryAsync(cancellationToken);
+        inventoryState.SetItems(items);
+        return Results.Ok(items);
+    }
+    catch (Exception exception)
+    {
+        logger.LogWarning(exception, "Failed to query dashboard inventory directly. Returning cached inventory snapshot.");
+        return Results.Ok(inventoryState.GetItems());
+    }
 });
 
 app.MapPost("/internal/symmetric/nodes/snapshot", async (
@@ -103,5 +144,6 @@ app.MapPost("/internal/symmetric/activity", async (
 });
 
 app.MapHub<SymmetricMonitorHub>("/hubs/symmetric-monitor");
+app.MapHub<InventoryMonitorHub>("/hubs/inventory-monitor");
 
 app.Run();

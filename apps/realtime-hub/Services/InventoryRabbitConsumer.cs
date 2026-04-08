@@ -1,7 +1,9 @@
 using System.Text;
 using System.Text.Json;
+using Microsoft.AspNetCore.SignalR;
 using RabbitMQ.Client;
 using RabbitMQ.Client.Events;
+using realtime_hub.Hubs;
 using realtime_hub.Models;
 
 namespace realtime_hub.Services;
@@ -10,6 +12,8 @@ public sealed class InventoryRabbitConsumer : BackgroundService
 {
     private readonly IConfiguration _configuration;
     private readonly DashboardInventoryWriter _dashboardInventoryWriter;
+    private readonly InventoryState _inventoryState;
+    private readonly IHubContext<InventoryMonitorHub> _inventoryHubContext;
     private readonly ILogger<InventoryRabbitConsumer> _logger;
 
     private IConnection? _connection;
@@ -18,10 +22,14 @@ public sealed class InventoryRabbitConsumer : BackgroundService
     public InventoryRabbitConsumer(
         IConfiguration configuration,
         DashboardInventoryWriter dashboardInventoryWriter,
+        InventoryState inventoryState,
+        IHubContext<InventoryMonitorHub> inventoryHubContext,
         ILogger<InventoryRabbitConsumer> logger)
     {
         _configuration = configuration;
         _dashboardInventoryWriter = dashboardInventoryWriter;
+        _inventoryState = inventoryState;
+        _inventoryHubContext = inventoryHubContext;
         _logger = logger;
     }
 
@@ -100,7 +108,15 @@ public sealed class InventoryRabbitConsumer : BackgroundService
                     return;
                 }
 
-                await _dashboardInventoryWriter.UpsertInventoryAsync(message, stoppingToken);
+                var savedItem = await _dashboardInventoryWriter.UpsertInventoryAsync(message, stoppingToken);
+
+                _inventoryState.UpsertItem(savedItem);
+
+                await _inventoryHubContext.Clients.All.SendAsync(
+                    "InventoryItemUpserted",
+                    savedItem,
+                    stoppingToken
+                );
 
                 _channel.BasicAck(eventArgs.DeliveryTag, false);
             }

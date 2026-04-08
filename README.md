@@ -735,18 +735,19 @@ Dashboard → Add Store → Click Save → Node auto-provisioned
 
 # Added some shell scripts to start and reset project
 # Give permissions
-chmod +x /StockMesh/start-stockmesh.sh
-chmod +x /StockMesh/stop-stockmesh.sh
-chmod +x /StockMesh/reset-stockmesh.sh
+chmod +x /Users/USER_NAME/StockMesh/start-stockmesh.sh
+chmod +x /Users/USER_NAME/StockMesh/stop-stockmesh.sh
+chmod +x /Users/USER_NAME/StockMesh/reset-stockmesh.sh
 
 # Start everything
-/StockMesh/start-stockmesh.sh
+/Users/USER_NAME/StockMesh/start-stockmesh.sh
 
 # Stop everything
-/StockMesh/stop-stockmesh.sh
+/Users/USER_NAME/StockMesh/stop-stockmesh.sh
 
 # Full reset
-/StockMesh/reset-stockmesh.sh
+/Users/USER_NAME/StockMesh/reset-stockmesh.sh
+
 
 
 
