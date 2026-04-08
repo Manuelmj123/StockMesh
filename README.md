@@ -733,6 +733,21 @@ Future Roadmap
 
 Dashboard → Add Store → Click Save → Node auto-provisioned
 
-docker compose down -v --remove-orphans
-docker compose build --no-cache && docker compose up
+# Added some shell scripts to start and reset project
+# Give permissions
+chmod +x /StockMesh/start-stockmesh.sh
+chmod +x /StockMesh/stop-stockmesh.sh
+chmod +x /StockMesh/reset-stockmesh.sh
+
+# Start everything
+/StockMesh/start-stockmesh.sh
+
+# Stop everything
+/StockMesh/stop-stockmesh.sh
+
+# Full reset
+/StockMesh/reset-stockmesh.sh
+
+
+
 

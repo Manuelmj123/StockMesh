@@ -162,10 +162,44 @@ WHERE NOT EXISTS (
 );
 
 UPDATE sym_trigger
-SET last_update_time = CURRENT_TIMESTAMP
+SET channel_id = 'inventory',
+    sync_on_insert = 1,
+    sync_on_update = 1,
+    sync_on_delete = 1,
+    sync_on_incoming_batch = 0,
+    use_stream_lobs = 0,
+    last_update_time = CURRENT_TIMESTAMP
 WHERE trigger_id = 'inventory_trigger';
 
 UPDATE sym_trigger_router
-SET last_update_time = CURRENT_TIMESTAMP
+SET enabled = 1,
+    ping_back_enabled = 0,
+    initial_load_order = 100,
+    last_update_time = CURRENT_TIMESTAMP
 WHERE trigger_id = 'inventory_trigger'
   AND router_id = 'store_to_central_inventory';
+
+INSERT INTO sym_table_reload_request (
+    target_node_id,
+    router_id,
+    trigger_id,
+    source_node_id,
+    create_time,
+    last_update_time
+)
+SELECT
+    '001',
+    'store_to_central_inventory',
+    'inventory_trigger',
+    '000',
+    CURRENT_TIMESTAMP,
+    CURRENT_TIMESTAMP
+FROM dual
+WHERE NOT EXISTS (
+    SELECT 1
+    FROM sym_table_reload_request
+    WHERE target_node_id = '001'
+      AND trigger_id = 'inventory_trigger'
+      AND router_id = 'store_to_central_inventory'
+      AND processed = 0
+);

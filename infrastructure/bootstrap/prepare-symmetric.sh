@@ -22,8 +22,4 @@ run_until_success \
   "create SymmetricDS tables for store-001" \
   /opt/symmetric-ds/bin/symadmin --engine store-001 create-sym-tables
 
-run_until_success \
-  "open registration for store node 001 on central-000" \
-  /opt/symmetric-ds/bin/symadmin open-registration --engine central-000 store 001
-
-echo "SymmetricDS preparation completed."
+echo "SymmetricDS table preparation completed."

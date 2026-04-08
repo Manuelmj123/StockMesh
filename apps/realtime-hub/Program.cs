@@ -7,6 +7,8 @@ var builder = WebApplication.CreateBuilder(args);
 
 builder.Services.AddSignalR();
 builder.Services.AddSingleton<MonitorState>();
+builder.Services.AddSingleton<DashboardInventoryWriter>();
+builder.Services.AddHostedService<InventoryRabbitConsumer>();
 
 var corsOrigins = builder.Configuration.GetSection("Cors:Origins").Get<string[]>() ?? new[]
 {

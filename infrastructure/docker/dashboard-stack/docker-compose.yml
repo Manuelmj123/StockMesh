@@ -9,6 +9,10 @@ services:
       VITE_SIGNALR_BASE_URL: http://localhost:5001
     depends_on:
       - dashboard-mysql
+    networks:
+      stockmesh-shared:
+        aliases:
+          - dashboard-web
 
   dashboard-mysql:
     image: mysql:8.4
@@ -17,3 +21,17 @@ services:
       MYSQL_DATABASE: stockmesh_dashboard
     ports:
       - "3308:3306"
+    volumes:
+      - dashboard-mysql-data:/var/lib/mysql
+      - ../../mysql-init/dashboard:/docker-entrypoint-initdb.d
+    networks:
+      stockmesh-shared:
+        aliases:
+          - dashboard-mysql
+
+volumes:
+  dashboard-mysql-data:
+
+networks:
+  stockmesh-shared:
+    external: true
